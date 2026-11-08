@@ -43,7 +43,7 @@ jobs:
             echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
           fi
 
-      # 🌟 自动打补丁：修复 C++ / Kotlin 报错 + 注入极速指令
+      # 🌟 自动打补丁：修复 C++ 报错 + 注入极速指令
       - name: 自动修复源码并注入 CPU 极速指令
         if: ${{ inputs.with_llama }}
         run: |
@@ -52,6 +52,8 @@ jobs:
           if [ -n "$JNI_FILE" ]; then
             sed -i 's/mp.use_mmap = true;/\/\/ mp.use_mmap = true;/g' "$JNI_FILE"
             sed -i 's/mp.use_mlock = false;/\/\/ mp.use_mlock = false;/g' "$JNI_FILE"
+            # 🌟 修复最新报错：强制抹除 const 属性传给新版接口
+            sed -i 's/llama_batch_get_one(tokens.data(),/llama_batch_get_one(const_cast<llama_token*>(tokens.data()),/g' "$JNI_FILE"
             echo "✅ llama_jni.cpp 修复完毕"
           fi
 
@@ -63,28 +65,13 @@ jobs:
             echo "✅ 硬件加速参数注入完成"
           fi
 
-          # 3. 修复 LlmService.kt 中的 Kotlin 语法报错
+          # 3. 修复 LlmService.kt 中的 Kotlin 语法报错 (虽然你源码改了，留着做双重保险)
           SERVICE_FILE=$(find ${{ env.PROJECT_DIR }} -name "LlmService.kt" | head -n 1)
           if [ -n "$SERVICE_FILE" ]; then
-            echo "找到 LlmService.kt，开始修复 Kotlin 语法..."
-            
-            # 先删掉所有不小心加错位置的 import
             sed -i '/^import android.os.IBinder/d' "$SERVICE_FILE"
-            # 安全地在 package 声明之后插入 import
             sed -i '/^package /a import android.os.IBinder' "$SERVICE_FILE"
-            
-            # 补全 onBind 的 ? 符号 (兼容是否有空格的情况)
             sed -i -E 's/fun onBind\((.*)\): IBinder([^?])/fun onBind(\1): IBinder?\2/g' "$SERVICE_FILE"
-            
-            # 🌟 终极杀招：强制抹掉所有引起表达式体报错的普通 return 语句
-            # 把形如 "return xxx" 替换成 "xxx"，但保留 "return@label"
-            sed -i -E 's/(^|[^a-zA-Z0-9_@])return\s+([^@])/\1\2/g' "$SERVICE_FILE"
-            
-            # 针对历史偏移引起的第 239/240 行特定处理（双重保险）
-            sed -i '239s/return //g' "$SERVICE_FILE" || true
-            sed -i '240s/return //g' "$SERVICE_FILE" || true
-            
-            echo "✅ Kotlin 语法修复完成"
+            echo "✅ Kotlin 语法双重修复完成"
           fi
 
       - name: 配置 Java 环境
@@ -122,7 +109,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: V2 极速版 Release ${{ github.run_number }}
+          name: 极速版 Release ${{ github.run_number }}
           files: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
