@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       with_llama:
-        description: '是否编译 llama.cpp 真机推理引擎 (默认否，编译较慢)'
+        description: '是否编译 llama.cpp 真机推理引擎 (选 true)'
         type: boolean
         default: false
 
@@ -32,29 +32,35 @@ jobs:
             unzip -q "$ZIP_FILE" -d extracted || unzip -q "$ZIP_FILE" -d extracted
             GRADLEW_PATH=$(find extracted -name "gradlew" | head -n 1)
             if [ -z "$GRADLEW_PATH" ]; then
-              echo "::error::解压后未找到 gradlew 文件，请检查压缩包内是否包含完整的 Android 源码。"
-              ls -R extracted
+              echo "::error::解压后未找到 gradlew 文件。"
               exit 1
             fi
             PROJECT_DIR=$(dirname "$GRADLEW_PATH")
-            echo "成功定位项目根目录: $PROJECT_DIR"
             echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
           fi
 
-      # 🌟 新增：自动修复 C++ 接口不兼容问题
-      - name: 自动打补丁修复 llama_jni.cpp
+      # 🌟 魔法补丁 1：修复 C++ 报错 + 注入法拉利级硬件加速指令
+      - name: 自动修复并注入 CPU 极速指令集
         if: ${{ inputs.with_llama }}
         run: |
+          # 1. 修复旧版接口报错
           JNI_FILE=$(find ${{ env.PROJECT_DIR }} -name "llama_jni.cpp" | head -n 1)
           if [ -n "$JNI_FILE" ]; then
-            echo "找到文件: $JNI_FILE，正在应用修复补丁..."
-            # 将旧的 use_mmap 和 use_mlock 注释掉（新版 llama.cpp 已移除这些字段）
             sed -i 's/mp.use_mmap = true;/\/\/ mp.use_mmap = true;/g' "$JNI_FILE"
             sed -i 's/mp.use_mlock = false;/\/\/ mp.use_mlock = false;/g' "$JNI_FILE"
-            echo "补丁应用完成！修改后的相关代码："
-            grep -n "use_mmap\|use_mlock" "$JNI_FILE" || true
+            echo "✅ llama_jni.cpp 已修复"
+          fi
+
+          # 2. 注入 armv8 硬件加速指令 (针对骁龙/天玑的终极提速)
+          CMAKE_FILE=$(find ${{ env.PROJECT_DIR }} -path "*native-llama/CMakeLists.txt" | head -n 1)
+          if [ -n "$CMAKE_FILE" ]; then
+            echo "找到 CMakeLists.txt: $CMAKE_FILE，注入极速编译参数..."
+            # 在文件开头注入编译参数
+            sed -i '1i set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -march=armv8.2-a+dotprod+fp16+i8mm")' "$CMAKE_FILE"
+            sed -i '1i set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=armv8.2-a+dotprod+fp16+i8mm")' "$CMAKE_FILE"
+            echo "✅ 硬件加速参数注入完成！"
           else
-            echo "未找到 llama_jni.cpp，跳过补丁。"
+            echo "⚠️ 未找到 native-llama/CMakeLists.txt，跳过注入。"
           fi
 
       - name: 配置 Java 环境
@@ -68,7 +74,7 @@ jobs:
         with:
           packages: 'platform-tools'
 
-      - name: 准备 NDK (仅在勾选 with_llama 时执行)
+      - name: 准备 NDK
         if: ${{ inputs.with_llama }}
         uses: nttld/setup-ndk@v1
         with:
@@ -81,8 +87,6 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
 
       - name: 执行构建 APK
         working-directory: ${{ env.PROJECT_DIR }}
@@ -90,17 +94,11 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug ${{ inputs.with_llama && '-PwithLlama=true' || '' }}
 
-      - name: 上传到 Actions 产物 (作为备份)
-        uses: actions/upload-artifact@v4
-        with:
-          name: LocalModelAPI-${{ github.run_number }}
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
-
       - name: 发布到 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: 自动构建 Release ${{ github.run_number }}
+          name: 极速版 Release ${{ github.run_number }}
           files: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
