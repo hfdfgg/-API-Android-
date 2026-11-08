@@ -22,7 +22,6 @@ jobs:
 
       - name: 解压源码并定位目录
         run: |
-          # 🌟 优先寻找带 v2 的压缩包
           ZIP_FILE=$(ls *v2*.zip 2>/dev/null | head -n 1)
           if [ -z "$ZIP_FILE" ]; then
             ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1)
@@ -44,25 +43,40 @@ jobs:
             echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
           fi
 
-      # 🌟 魔法补丁：修复 C++ 报错 + 注入 CPU 极速指令
-      - name: 自动修复并注入 CPU 极速指令集
+      # 🌟 自动打补丁：修复 C++ / Kotlin 报错 + 注入极速指令
+      - name: 自动修复源码并注入 CPU 极速指令
         if: ${{ inputs.with_llama }}
         run: |
-          # 1. 修复旧版 llama_jni.cpp 接口报错 (保险起见，即使 V2 可能修了)
+          # 1. 修复旧版 llama_jni.cpp 接口报错 (C++)
           JNI_FILE=$(find ${{ env.PROJECT_DIR }} -name "llama_jni.cpp" | head -n 1)
           if [ -n "$JNI_FILE" ]; then
             sed -i 's/mp.use_mmap = true;/\/\/ mp.use_mmap = true;/g' "$JNI_FILE"
             sed -i 's/mp.use_mlock = false;/\/\/ mp.use_mlock = false;/g' "$JNI_FILE"
-            echo "✅ llama_jni.cpp 检查并修复完毕"
+            echo "✅ llama_jni.cpp 修复完毕"
           fi
 
           # 2. 注入 armv8 硬件加速指令 (法拉利 V12 发动机)
           CMAKE_FILE=$(find ${{ env.PROJECT_DIR }} -path "*native-llama/CMakeLists.txt" | head -n 1)
           if [ -n "$CMAKE_FILE" ]; then
-            echo "找到 CMakeLists.txt，注入极速编译参数..."
             sed -i '1i set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -march=armv8.2-a+dotprod+fp16+i8mm")' "$CMAKE_FILE"
             sed -i '1i set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=armv8.2-a+dotprod+fp16+i8mm")' "$CMAKE_FILE"
-            echo "✅ 硬件加速参数注入完成！"
+            echo "✅ 硬件加速参数注入完成"
+          fi
+
+          # 3. 修复 LlmService.kt 中的 Kotlin 语法报错
+          SERVICE_FILE=$(find ${{ env.PROJECT_DIR }} -name "LlmService.kt" | head -n 1)
+          if [ -n "$SERVICE_FILE" ]; then
+            echo "找到 LlmService.kt，开始修复 Kotlin 语法..."
+            # 确保引入了 IBinder (防止 Unresolved reference)
+            grep -q "import android.os.IBinder" "$SERVICE_FILE" || sed -i '1i import android.os.IBinder' "$SERVICE_FILE"
+            
+            # 给 onBind 的返回值加上 ? (防止不支持 null)
+            sed -i -E 's/fun onBind(.*): IBinder(\s*\{)/fun onBind\1: IBinder?\2/g' "$SERVICE_FILE"
+            sed -i -E 's/fun onBind(.*): IBinder(\s*=)/fun onBind\1: IBinder?\2/g' "$SERVICE_FILE"
+            
+            # 修复单表达式函数体中的 return (改为直接返回 null)
+            sed -i 's/= return null/= null/g' "$SERVICE_FILE"
+            echo "✅ Kotlin 语法修复完成"
           fi
 
       - name: 配置 Java 环境
