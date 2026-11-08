@@ -1,5 +1,9 @@
 name: 构建与发布 APK
 
+# 🌟 新增：赋予 Actions 写入权限，解决 Release 报错
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ main ]
@@ -17,7 +21,6 @@ jobs:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
 
-      # 🌟 智能解压：自动找压缩包，自动定位项目根目录
       - name: 解压源码并定位目录
         run: |
           ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1)
@@ -45,7 +48,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # 🌟 已修复：升级到 v4，并跳过废弃的 tools 包
       - name: 配置 Android 环境
         uses: android-actions/setup-android@v4
         with:
@@ -57,7 +59,6 @@ jobs:
         with:
           ndk-version: r27
 
-      # 🌟 缓存加速：第二次构建速度起飞
       - name: 缓存 Gradle 依赖
         uses: actions/cache@v4
         with:
@@ -80,7 +81,6 @@ jobs:
           name: LocalModelAPI-${{ github.run_number }}
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
 
-      # 🌟 自动发布 Release，直接下载 APK
       - name: 发布到 Release
         uses: softprops/action-gh-release@v2
         with:
