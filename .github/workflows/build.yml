@@ -67,15 +67,20 @@ jobs:
           SERVICE_FILE=$(find ${{ env.PROJECT_DIR }} -name "LlmService.kt" | head -n 1)
           if [ -n "$SERVICE_FILE" ]; then
             echo "找到 LlmService.kt，开始修复 Kotlin 语法..."
-            # 确保引入了 IBinder (防止 Unresolved reference)
-            grep -q "import android.os.IBinder" "$SERVICE_FILE" || sed -i '1i import android.os.IBinder' "$SERVICE_FILE"
             
-            # 给 onBind 的返回值加上 ? (防止不支持 null)
+            # 先删掉所有不小心加错位置的 import
+            sed -i '/^import android.os.IBinder/d' "$SERVICE_FILE"
+            # 安全地在 package 声明之后插入 import
+            sed -i '/^package /a import android.os.IBinder' "$SERVICE_FILE"
+            
+            # 补全 onBind 的 ? 符号
             sed -i -E 's/fun onBind(.*): IBinder(\s*\{)/fun onBind\1: IBinder?\2/g' "$SERVICE_FILE"
             sed -i -E 's/fun onBind(.*): IBinder(\s*=)/fun onBind\1: IBinder?\2/g' "$SERVICE_FILE"
             
-            # 修复单表达式函数体中的 return (改为直接返回 null)
+            # 暴力清理非法的 return 表达式 (把 = return xxx 替换成 = xxx)
             sed -i 's/= return null/= null/g' "$SERVICE_FILE"
+            sed -i 's/= return /= /g' "$SERVICE_FILE"
+            
             echo "✅ Kotlin 语法修复完成"
           fi
 
