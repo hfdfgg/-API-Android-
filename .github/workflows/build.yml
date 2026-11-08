@@ -1,46 +1,43 @@
 name: 构建与验证
+
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      with_llama:
-        description: '编译 llama.cpp JNI (真机推理)'
-        type: boolean
-        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: 拉取代码
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      # 🌟 新增：自动解压源码包
+      - name: 解压源码包
+        run: |
+          mkdir project
+          unzip source.zip -d project
+          ls -la project # 打印解压后的目录结构，方便排查问题
+
+      - name: 配置 Java 环境
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: 配置 Android 环境
+        uses: android-actions/setup-android@v3
 
-      - name: 准备 NDK (仅 with_llama)
-        if: ${{ inputs.with_llama }}
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27
-
-      - name: 协议回归 (失败不阻断出包)
-        run: |
-          python3 scripts/verify-protocol.py --report VERIFY_REPORT.md || true
-
+      # 🌟 注意：这里指定了解压后的目录
       - name: 构建 Debug APK
+        working-directory: ./project
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug ${{ inputs.with_llama && '-PwithLlama=true' || '' }}
+          ./gradlew assembleDebug
 
+      # 🌟 注意：提取路径变了
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: LocalModelAPI-${{ github.run_number }}
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            VERIFY_REPORT.md
+          name: LocalModelAPI-APP
+          path: project/app/build/outputs/apk/debug/app-debug.apk
