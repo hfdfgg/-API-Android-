@@ -1,6 +1,5 @@
 name: 构建与发布 APK
 
-# 🌟 新增：赋予 Actions 写入权限，解决 Release 报错
 permissions:
   contents: write
 
@@ -42,6 +41,22 @@ jobs:
             echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
           fi
 
+      # 🌟 新增：自动修复 C++ 接口不兼容问题
+      - name: 自动打补丁修复 llama_jni.cpp
+        if: ${{ inputs.with_llama }}
+        run: |
+          JNI_FILE=$(find ${{ env.PROJECT_DIR }} -name "llama_jni.cpp" | head -n 1)
+          if [ -n "$JNI_FILE" ]; then
+            echo "找到文件: $JNI_FILE，正在应用修复补丁..."
+            # 将旧的 use_mmap 和 use_mlock 注释掉（新版 llama.cpp 已移除这些字段）
+            sed -i 's/mp.use_mmap = true;/\/\/ mp.use_mmap = true;/g' "$JNI_FILE"
+            sed -i 's/mp.use_mlock = false;/\/\/ mp.use_mlock = false;/g' "$JNI_FILE"
+            echo "补丁应用完成！修改后的相关代码："
+            grep -n "use_mmap\|use_mlock" "$JNI_FILE" || true
+          else
+            echo "未找到 llama_jni.cpp，跳过补丁。"
+          fi
+
       - name: 配置 Java 环境
         uses: actions/setup-java@v4
         with:
@@ -49,7 +64,7 @@ jobs:
           java-version: '17'
 
       - name: 配置 Android 环境
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v4.0.4
         with:
           packages: 'platform-tools'
 
