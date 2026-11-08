@@ -45,8 +45,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # 🌟 已修复：升级到 v4，并跳过废弃的 tools 包
       - name: 配置 Android 环境
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - name: 准备 NDK (仅在勾选 with_llama 时执行)
         if: ${{ inputs.with_llama }}
