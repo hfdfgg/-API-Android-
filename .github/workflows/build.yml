@@ -22,7 +22,8 @@ jobs:
 
       - name: 解压源码并定位目录
         run: |
-          ZIP_FILE=$(ls *v2*.zip 2>/dev/null | head -n 1)
+          # 🌟 优先寻找带 v3 的压缩包
+          ZIP_FILE=$(ls *v3*.zip 2>/dev/null | head -n 1)
           if [ -z "$ZIP_FILE" ]; then
             ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1)
           fi
@@ -43,7 +44,7 @@ jobs:
             echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
           fi
 
-      # 🌟 自动打补丁：修复 C++ 报错 + 注入极速指令
+      # 🌟 自动打补丁：修复 C++ 报错 + 注入极速指令 + Kotlin 兜底
       - name: 自动修复源码并注入 CPU 极速指令
         if: ${{ inputs.with_llama }}
         run: |
@@ -52,7 +53,7 @@ jobs:
           if [ -n "$JNI_FILE" ]; then
             sed -i 's/mp.use_mmap = true;/\/\/ mp.use_mmap = true;/g' "$JNI_FILE"
             sed -i 's/mp.use_mlock = false;/\/\/ mp.use_mlock = false;/g' "$JNI_FILE"
-            # 🌟 修复最新报错：强制抹除 const 属性传给新版接口
+            # 强制抹除 const 属性传给新版接口
             sed -i 's/llama_batch_get_one(tokens.data(),/llama_batch_get_one(const_cast<llama_token*>(tokens.data()),/g' "$JNI_FILE"
             echo "✅ llama_jni.cpp 修复完毕"
           fi
@@ -65,7 +66,7 @@ jobs:
             echo "✅ 硬件加速参数注入完成"
           fi
 
-          # 3. 修复 LlmService.kt 中的 Kotlin 语法报错 (虽然你源码改了，留着做双重保险)
+          # 3. 修复 LlmService.kt 中的 Kotlin 语法报错 (双重保险)
           SERVICE_FILE=$(find ${{ env.PROJECT_DIR }} -name "LlmService.kt" | head -n 1)
           if [ -n "$SERVICE_FILE" ]; then
             sed -i '/^import android.os.IBinder/d' "$SERVICE_FILE"
@@ -109,7 +110,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: 极速版 Release ${{ github.run_number }}
+          name: V3 极速版 Release ${{ github.run_number }}
           files: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
