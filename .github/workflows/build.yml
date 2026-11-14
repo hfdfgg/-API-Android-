@@ -30,7 +30,6 @@ jobs:
             mkdir -p extracted
             unzip -q "$ZIP_FILE" -d extracted
             
-            # 既然缺少 gradlew，改为通过 settings.gradle 来定位工程根目录
             SETTINGS_FILE=$(find extracted -type f -name "settings.gradle" | head -n 1)
             if [ -z "$SETTINGS_FILE" ]; then
               echo "::error::解压后未找到 settings.gradle 文件，请确认压缩包内容。"
@@ -55,16 +54,16 @@ jobs:
       - name: 执行构建 APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "由于压缩包缺失 gradlew，正在使用系统 Gradle 自动生成..."
-          # 让系统自动生成缺失的 gradlew 脚本
+          echo "正在使用系统 Gradle 自动生成 gradlew 包装器..."
           gradle wrapper
           
-          echo "开始编译..."
+          echo "开始编译（已开启详细日志）..."
           chmod +x gradlew
-          ./gradlew assembleDebug
+          # 核心修改：添加 --stacktrace 参数输出详细错误
+          ./gradlew assembleDebug --stacktrace
 
       - name: 自动发布到 Release
-        uses: softprops/action-gh-release@v2
+        uses: actions/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: 率土战情终端 Release ${{ github.run_number }}
