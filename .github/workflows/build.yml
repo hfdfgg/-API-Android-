@@ -29,14 +29,16 @@ jobs:
             echo "找到压缩包: $ZIP_FILE，开始解压..."
             mkdir -p extracted
             unzip -q "$ZIP_FILE" -d extracted
-            # 自动定位真正的工程目录
-            GRADLEW_PATH=$(find extracted -name "gradlew" | head -n 1)
-            if [ -z "$GRADLEW_PATH" ]; then
-              echo "::error::解压后未找到 gradlew 文件。"
+            
+            # 既然缺少 gradlew，改为通过 settings.gradle 来定位工程根目录
+            SETTINGS_FILE=$(find extracted -type f -name "settings.gradle" | head -n 1)
+            if [ -z "$SETTINGS_FILE" ]; then
+              echo "::error::解压后未找到 settings.gradle 文件，请确认压缩包内容。"
               exit 1
             fi
-            PROJECT_DIR=$(dirname "$GRADLEW_PATH")
+            PROJECT_DIR=$(dirname "$SETTINGS_FILE")
             echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+            echo "已定位工程目录: $PROJECT_DIR"
           fi
 
       - name: 配置 Java 环境
@@ -50,17 +52,14 @@ jobs:
         with:
           packages: 'platform-tools'
 
-      - name: 缓存 Gradle 依赖 (加速打包)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-
       - name: 执行构建 APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          echo "由于压缩包缺失 gradlew，正在使用系统 Gradle 自动生成..."
+          # 让系统自动生成缺失的 gradlew 脚本
+          gradle wrapper
+          
+          echo "开始编译..."
           chmod +x gradlew
           ./gradlew assembleDebug
 
