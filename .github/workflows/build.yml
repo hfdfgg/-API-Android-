@@ -7,11 +7,6 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      with_llama:
-        description: '是否编译 llama.cpp 真机推理引擎 (选 true)'
-        type: boolean
-        default: false
 
 jobs:
   build:
@@ -22,10 +17,9 @@ jobs:
 
       - name: 解压源码并定位目录
         run: |
-          # 🌟 优先寻找带 v3 的压缩包
-          ZIP_FILE=$(ls *v3*.zip 2>/dev/null | head -n 1)
+          ZIP_FILE=$(ls *率土战情*.zip 2>/dev/null | head -n 1)
           if [ -z "$ZIP_FILE" ]; then
-            ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1)
+             ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1)
           fi
 
           if [ -z "$ZIP_FILE" ]; then
@@ -34,7 +28,8 @@ jobs:
           else
             echo "找到压缩包: $ZIP_FILE，开始解压..."
             mkdir -p extracted
-            unzip -q "$ZIP_FILE" -d extracted || unzip -q "$ZIP_FILE" -d extracted
+            unzip -q "$ZIP_FILE" -d extracted
+            # 自动定位真正的工程目录
             GRADLEW_PATH=$(find extracted -name "gradlew" | head -n 1)
             if [ -z "$GRADLEW_PATH" ]; then
               echo "::error::解压后未找到 gradlew 文件。"
@@ -42,37 +37,6 @@ jobs:
             fi
             PROJECT_DIR=$(dirname "$GRADLEW_PATH")
             echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-          fi
-
-      # 🌟 自动打补丁：修复 C++ 报错 + 注入极速指令 + Kotlin 兜底
-      - name: 自动修复源码并注入 CPU 极速指令
-        if: ${{ inputs.with_llama }}
-        run: |
-          # 1. 修复旧版 llama_jni.cpp 接口报错 (C++)
-          JNI_FILE=$(find ${{ env.PROJECT_DIR }} -name "llama_jni.cpp" | head -n 1)
-          if [ -n "$JNI_FILE" ]; then
-            sed -i 's/mp.use_mmap = true;/\/\/ mp.use_mmap = true;/g' "$JNI_FILE"
-            sed -i 's/mp.use_mlock = false;/\/\/ mp.use_mlock = false;/g' "$JNI_FILE"
-            # 强制抹除 const 属性传给新版接口
-            sed -i 's/llama_batch_get_one(tokens.data(),/llama_batch_get_one(const_cast<llama_token*>(tokens.data()),/g' "$JNI_FILE"
-            echo "✅ llama_jni.cpp 修复完毕"
-          fi
-
-          # 2. 注入 armv8 硬件加速指令 (法拉利 V12 发动机)
-          CMAKE_FILE=$(find ${{ env.PROJECT_DIR }} -path "*native-llama/CMakeLists.txt" | head -n 1)
-          if [ -n "$CMAKE_FILE" ]; then
-            sed -i '1i set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -march=armv8.2-a+dotprod+fp16+i8mm")' "$CMAKE_FILE"
-            sed -i '1i set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=armv8.2-a+dotprod+fp16+i8mm")' "$CMAKE_FILE"
-            echo "✅ 硬件加速参数注入完成"
-          fi
-
-          # 3. 修复 LlmService.kt 中的 Kotlin 语法报错 (双重保险)
-          SERVICE_FILE=$(find ${{ env.PROJECT_DIR }} -name "LlmService.kt" | head -n 1)
-          if [ -n "$SERVICE_FILE" ]; then
-            sed -i '/^import android.os.IBinder/d' "$SERVICE_FILE"
-            sed -i '/^package /a import android.os.IBinder' "$SERVICE_FILE"
-            sed -i -E 's/fun onBind\((.*)\): IBinder([^?])/fun onBind(\1): IBinder?\2/g' "$SERVICE_FILE"
-            echo "✅ Kotlin 语法双重修复完成"
           fi
 
       - name: 配置 Java 环境
@@ -86,13 +50,7 @@ jobs:
         with:
           packages: 'platform-tools'
 
-      - name: 准备 NDK
-        if: ${{ inputs.with_llama }}
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27
-
-      - name: 缓存 Gradle 依赖
+      - name: 缓存 Gradle 依赖 (加速打包)
         uses: actions/cache@v4
         with:
           path: |
@@ -104,13 +62,13 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug ${{ inputs.with_llama && '-PwithLlama=true' || '' }}
+          ./gradlew assembleDebug
 
-      - name: 发布到 Release
+      - name: 自动发布到 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: V3 极速版 Release ${{ github.run_number }}
+          name: 率土战情终端 Release ${{ github.run_number }}
           files: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
