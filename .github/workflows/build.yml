@@ -23,21 +23,14 @@ jobs:
           fi
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "未找到 zip 文件，假设代码已在根目录。"
             echo "PROJECT_DIR=$(pwd)" >> $GITHUB_ENV
           else
-            echo "找到压缩包: $ZIP_FILE，开始解压..."
             mkdir -p extracted
             unzip -q "$ZIP_FILE" -d extracted
-            
             SETTINGS_FILE=$(find extracted -type f -name "settings.gradle" | head -n 1)
-            if [ -z "$SETTINGS_FILE" ]; then
-              echo "::error::解压后未找到 settings.gradle 文件，请确认压缩包内容。"
-              exit 1
-            fi
             PROJECT_DIR=$(dirname "$SETTINGS_FILE")
             echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-            echo "已定位工程目录: $PROJECT_DIR"
+            echo "定位成功: $PROJECT_DIR"
           fi
 
       - name: 配置 Java 环境
@@ -46,21 +39,29 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 配置 Android 环境
+      - name: 配置 Android 环境及 NDK
         uses: android-actions/setup-android@v4.0.4
         with:
           packages: 'platform-tools'
+          
+      # 关键补充：很多这种工程包含 C++ 代码，没 NDK 必报错
+      - name: 预装 NDK (防止 C++ 编译报错)
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1" || true
 
       - name: 执行构建 APK
         working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          # 关键补充：强制分配 4G 内存给 Gradle，防止 OOM 内存溢出
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.daemon=false"
         run: |
-          echo "正在使用 Gradle 8.9 版本生成包装器..."
-          # 关键修改：升级到 8.9 满足项目要求
+          echo "正在使用 Gradle 8.9 生成包装器..."
           gradle wrapper --gradle-version 8.9
+          chmod +x gradlew
           
           echo "开始编译..."
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          # 如果编译失败，自动抛出明显的错误提示
+          ./gradlew assembleDebug --stacktrace || { echo "::error title=编译失败::请点击上方日志查看具体代码报错"; exit 1; }
 
       - name: 自动发布到 Release
         uses: softprops/action-gh-release@v2
