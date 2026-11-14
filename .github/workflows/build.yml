@@ -54,9 +54,9 @@ jobs:
       - name: 执行构建 APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "正在使用安全的 Gradle 8.5 版本生成包装器..."
-          # 关键修改：强制指定 Gradle 版本为 8.5
-          gradle wrapper --gradle-version 8.5
+          echo "正在使用 Gradle 8.9 版本生成包装器..."
+          # 关键修改：升级到 8.9 满足项目要求
+          gradle wrapper --gradle-version 8.9
           
           echo "开始编译..."
           chmod +x gradlew
