@@ -54,12 +54,12 @@ jobs:
       - name: 执行构建 APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "正在使用系统 Gradle 自动生成 gradlew 包装器..."
-          gradle wrapper
+          echo "正在使用安全的 Gradle 8.5 版本生成包装器..."
+          # 关键修改：强制指定 Gradle 版本为 8.5
+          gradle wrapper --gradle-version 8.5
           
-          echo "开始编译（已开启详细日志）..."
+          echo "开始编译..."
           chmod +x gradlew
-          # 核心修改：添加 --stacktrace 参数输出详细错误
           ./gradlew assembleDebug --stacktrace
 
       - name: 自动发布到 Release
